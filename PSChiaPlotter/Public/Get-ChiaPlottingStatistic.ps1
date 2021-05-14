@@ -6,9 +6,6 @@ function Get-ChiaPlottingStatistic {
     )
 
     Process{
-        Copy-Item -Path C:\Users\AbmChia\.chia\mainnet\log -Recurse -Destination $env:USERPROFILE\.chia\mainnet\plotter\
-        Remove-Item -Filter debug.* -Path $env:USERPROFILE\.chia\mainnet\plotter\ -Recurse
-        Remove-Item -Filter *.lock -Path $env:USERPROFILE\.chia\mainnet\plotter\ -Recurse
         foreach ($log in $path){
             if (Test-Path $log){
                 $Content = Get-Content -Path $log | Select-String "Time for phase","Total time","Plot size","Buffer size","threads of stripe","Copy time","Copied final file from","Starting plotting progress into temporary dirs" | foreach {$_.ToString()}
