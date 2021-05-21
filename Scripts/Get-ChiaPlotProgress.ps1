@@ -6,12 +6,16 @@ function Get-ChiaPlotProgress {
         [string]$LogPath
     )
 
+    if ([System.IO.Directory]::Exists($LogPath)){
+        Write-Error "You provided a directory path and not a file path to the log file" -ErrorAction Stop
+    }
+
     #base code from https://github.com/swar/Swar-Chia-Plot-Manager/blob/7287eef4796dbfa4cc009086c6502d19f0706f3e/config.yaml.default
     $phase1_line_end = 801
     $phase2_line_end = 834
     $phase3_line_end = 2474
     $phase4_line_end = 2620
-    $copyfile_line_end = 2624
+    $copyfile_line_end = 2627
     $phase1_weight = 33
     $phase2_weight = 20
     $phase3_weight = 42
