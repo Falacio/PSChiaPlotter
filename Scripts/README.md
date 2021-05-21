@@ -18,8 +18,11 @@ The script creates a plotting queue without temporal delays or staggering. After
 Delay in seconds is the interval time to check if last process has finished phase 1.
 
 Examples
+
  - Basic Automode (will do 12 plots, with standard settings and 60 seconds refresh window. Logs in default chia logs folder)
+ 
 	.\Get-ChiaAutoPlotting.ps1 -TempDirectoryPath D:\MyTempPath -FinalDirectoryPath D:\MyPlotsPath
 
  - Custom mode 
-	.\Get-ChiaAutoPlotting.ps1 -TotalPlots 24 -Delay 30 -Buffer 4000 -Threads 4 -TempDirectoryPath D:\MyTempPath FinalDirectoryPath D:\MyPlotsPath -LogDirectoryPath D:\MyLogPath
+ 
+	.\Get-ChiaAutoPlotting.ps1 -TotalPlots 24 -Delay 30 -Buffer 4000 -Threads 4 -TempDirectoryPath D:\MyTempPath -FinalDirectoryPath D:\MyPlotsPath -LogDirectoryPath D:\MyLogPath
