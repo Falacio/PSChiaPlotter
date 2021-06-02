@@ -1,7 +1,7 @@
 function Start-ChiaParallelPlotting {
     param(
         [ValidateRange(1,128)]
-        [int]$ParallelCount = 1,
+        [int]$ParallelCount = 12,
 
         [ValidateRange(0,[int]::MaxValue)]
         [Alias("Delay")]
@@ -9,9 +9,9 @@ function Start-ChiaParallelPlotting {
 
         [int]$PlotsPerQueue = 1,
         [ValidateRange(3390,[int]::MaxValue)]
-        [int]$Buffer = 3390,
+        [int]$Buffer = 4000,
         [ValidateRange(1,128)]
-        [int]$Threads = 2,
+        [int]$Threads = 4,
 
         [Parameter(Mandatory)]
         [ValidateScript({[System.IO.Directory]::Exists($_)})]
@@ -78,9 +78,11 @@ function Start-ChiaParallelPlotting {
             FilePath = "powershell.exe"
             ArgumentList = "$NoExitFlag -Command Start-ChiaPlotting $ChiaArguments"
         }
-        Start-Process @processParam
-        if ($Queue -lt $ParallelCount){
-            Start-Sleep -Seconds $DelayInSeconds
+        $CurrentPlot = Start-Process @processParam -PassThru
+        $log_plot = Join-Path $LogDirectoryPath ((Get-Date $CurrentPlot.StartTime).ToString('yyyy_MM_dd_hh-mm-ss-tt-') + "plotlog" + ".log")
+        $progress = Get-ChiaPlotProgress -LogPath $log_plot -ErrorAction Stop
+        while ($progress.$phase1_line_end -le 801){
+            Start-Sleep -Seconds 60
         }
     } #for
 }
