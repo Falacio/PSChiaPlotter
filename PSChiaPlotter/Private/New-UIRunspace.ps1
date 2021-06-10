@@ -9,7 +9,8 @@ function New-UIRunspace{
         Try{
             Get-childItem -Path $DataHash.PrivateFunctions -File | ForEach-Object {Import-Module $_.FullName}
             Get-childItem -Path $DataHash.Classes -File | ForEach-Object {Import-Module $_.FullName}
-            #Get-childItem -Path $DataHash.Assemblies -File | ForEach-Object {Add-Type -Path $_.FullName}
+
+            Import-Module -Name PSChiaPLotter
     
             $XAMLPath = Join-Path -Path $DataHash.WPF -ChildPath MainWindow.xaml
             $MainWindow = Import-Xaml -Path $XAMLPath
@@ -21,11 +22,18 @@ function New-UIRunspace{
             $UIHash.Runs_DataGrid = $MainWindow.FindName("Runs_DataGrid")
             $UIHash.CompletedRuns_DataGrid = $MainWindow.FindName("CompletedRuns_DataGrid")
             $UIHash.Refreshdrives_Button = $MainWindow.FindName("RefreshdrivesButton")
+            #$UIHash.LogLevel_Combobox = $MainWindow.FindName("LogLevelCombobox")
+            $UIHash.CheckForUpdate_Button = $MainWindow.FindName("CheckForUpateButton")
+            $UIHash.OpenLog_Button = $MainWindow.FindName("OpenLogButton")
             $DataHash.RefreshingDrives = $false
 
             $UIHash.NewJob_Button = $MainWindow.FindName("AddJob_Button")
 
             $DataHash.MainViewModel = [PSChiaPlotter.MainViewModel]::new()
+            $DataHash.MainViewModel.Version = (Get-Module -Name PSChiaPlotter).Version.ToString()
+            $DataHash.MainViewModel.LogPath = $DataHash.LogPath
+            $DataHash.MainViewModel.LogLevel = "Info"
+            #$UIHash.LogLevel_Combobox.SelectedIndex = 0
             $UIHash.MainWindow.DataContext = $DataHash.MainViewModel
 
             #Add Master Copy of volumes to MainViewModel these are used to keep track of
@@ -43,6 +51,7 @@ function New-UIRunspace{
                     $jobNumber = $DataHash.MainViewModel.AllJobs.Count + 1
                     $newJob = [PSChiaPlotter.ChiaJob]::new()
                     $newJob.JobNumber = $jobNumber
+                    $newJob.JobName = "Job $jobNumber"
                     $NewJobViewModel = [PSChiaPlotter.NewJobViewModel]::new($newJob)
 
                     #need to run get-chiavolume twice or the temp and final drives will be the same object in the application and will update each other...
@@ -114,6 +123,26 @@ function New-UIRunspace{
                 }
             })
 
+            $UIHash.CheckForUpdate_Button.Add_Click({
+                try{
+                    Update-PSChiaPlotter
+                }
+                catch{
+                    Write-PSChiaPlotterLog -LogType ERROR -LineNumber $_.InvocationInfo.ScriptLineNumber -Message $_.Exception.Message
+                    Show-Messagebox "Unable to check for updates... check logs for more info" | Out-Null
+                }
+            })
+
+            $UIHash.OpenLog_Button.Add_Click({
+                try{
+                    Invoke-Item -Path $DataHash.MainViewModel.LogPath -ErrorAction Stop
+                }
+                catch{
+                    Write-PSChiaPlotterLog -LogType ERROR -LineNumber $_.InvocationInfo.ScriptLineNumber -Message $_.Exception.Message
+                    Show-Messagebox "Unable to open log file, check the path '$($DataHash.MainViewModel.LogPath)'" | Out-Null
+                }
+            })
+
             #$ScriptsHash.QueueHandle = $ScriptsHash.QueueRunspace.BeginInvoke()
 
             $UIHash.MainWindow.add_Closing({
@@ -126,32 +155,6 @@ function New-UIRunspace{
                 else{
                     #$ScriptsHash.QueueHandle.EndInvoke($QueueHandle)
                     Stop-PSChiaPlotter
-                }
-            })
-
-            #Hyperlink thingy
-            $UIHash.MainWindow.add_PreviewMouseLeftButtonDown({
-                Get-childItem -Path $DataHash.PrivateFunctions -File | ForEach-Object {Import-Module $_.FullName}
-                $grid = $UIHash.Runs_DataGrid
-                $result = [System.Windows.Media.VisualTreeHelper]::HitTest($grid, $_.GetPosition($grid))
-                $element = $result.VisualHit
-            
-                if (($null -ne $element) -and ($element.GetType().Name -eq "TextBlock")) {
-                    if ($null -ne $element.Parent) {
-                        # handle hyperlink click
-                        if (($null -ne $element.Parent.Parent) -and ($element.Parent.Parent.GetType().Name -eq "Hyperlink")) {
-                            $hyperlink = $element.Parent.Parent
-                            if (Test-Path -LiteralPath $hyperlink.NavigateUri.OriginalString) {
-                                # launch file
-                                try{
-                                    Invoke-Item -LiteralPath $hyperlink.NavigateUri.OriginalString -ErrorAction Stop
-                                }
-                                catch{
-                                    Show-Messagebox -Message "$($_.ErrorDetails.Message)" -Title "Hyperlink Click Error"
-                                }
-                            }
-                        }
-                    }
                 }
             })
 
