@@ -39,9 +39,20 @@ function Start-GUIChiaPlotting {
         if (-not[string]::IsNullOrWhiteSpace($FarmerPublicKey)){
             $ChiaArguments += " -f $FarmerPublicKey"
         }
-        if (-not[string]::IsNullOrWhiteSpace($SecondTempDirectoryPath)){
-            $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd('\')
-            $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+
+        if ($ChiaJob.BasicPlotting){
+            if ($ChiaRun.PlottingParameters.EnableBasicSecondTempDirectory){
+                if (-not[string]::IsNullOrWhiteSpace($SecondTempDirectoryPath)){
+                    $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd('\')
+                    $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+                }
+            }
+        }
+        else{
+            if (-not[string]::IsNullOrWhiteSpace($SecondTempDirectoryPath)){
+                $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd('\')
+                $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+            }
         }
         if ($KSize -eq 25){
             $ChiaArguments += " --override-k"
@@ -86,6 +97,7 @@ function Start-GUIChiaPlotting {
                         $progress = Get-ChiaPlotProgress -LogPath $LogPath -ErrorAction Stop
                         $plotid = $progress.PlotId
                         $ChiaRun.Progress = $progress.progress
+                        $ChiaRun.PlotId = $plotid
                         $ChiaQueue.CurrentTime = [DateTime]::Now
                         $ChiaRun.CurrentTime = [DateTime]::Now
                         $ChiaRun.Phase = $progress.Phase
@@ -128,6 +140,7 @@ function Start-GUIChiaPlotting {
                     $ChiaQueue.FailedPlotCount++
                     $ChiaJob.FailedPlotCount++
                     $DataHash.MainViewModel.FailedRuns.Add($ChiaRun)
+                    sleep -Seconds 1
                     Get-ChildItem -Path $TempDirectoryPath -Filter "*$plotid*.tmp" | foreach {
                         try{
                             Remove-Item -Path $_.FullName -Force -ErrorAction Stop
@@ -152,8 +165,10 @@ function Start-GUIChiaPlotting {
                     $ChiaJob.CompletedPlotCount++
                     $ChiaQueue.CompletedPlotCount++
                     $DataHash.MainViewModel.CompletedRuns.Add($ChiaRun)
+                    $ChiaRun.CheckPlotPowershellCommand = "&'$ChiaPath' plots check -g $plotid"
                     Update-ChiaGUISummary -Success
                 }
+                $ChiaQueue.CurrentRun = $null
                 $DataHash.MainViewModel.CurrentRuns.Remove($ChiaRun)
             }
             catch{
