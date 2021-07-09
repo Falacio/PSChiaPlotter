@@ -21,21 +21,49 @@ function Start-GUIChiaPlotting {
         $PoolPublicKey = $PlottingParameters.PoolPublicKey
         $FarmerPublicKey = $PlottingParameters.FarmerPublicKey
         $Buckets = $PlottingParameters.Buckets
+        $PoolContractEnabled = $PlottingParameters.PoolContractEnabled
+        $PoolContractAddress = $PlottingParameters.PoolContractAddress
+        $ReplotEnabled = $PlottingParameters.ReplotEnabled
+        $AlternativePlotterEnabled = $PlottingParameters.AlternativePlotterEnabled
+        $AlternativePlotterPath = $PlottingParameters.AlternativePlotterPath
+        $Phase3and4Buckets = $PlottingParameters.PhaseThreeFourBuckets
+        
+        #used for replotting
+        $OldPlotDeleted = $false
 
         $E = if ($DisableBitfield){"-e"}
         $X = if ($ExcludeFinalDirectory){"-x"}
 
         #remove any trailing '\' since chia.exe hates them
-        $TempDirectoryPath = $TempDirectoryPath.TrimEnd('\')
-        $FinalDirectoryPath = $FinalDirectoryPath.TrimEnd('\')
+        $TempDirectoryPath = $TempDirectoryPath.TrimEnd(@('\','/'))
+        $FinalDirectoryPath = $FinalDirectoryPath.TrimEnd(@('\','/'))
 
-        #path to chia.exe
+        #path to chia.exe or alternative plotter
         $ChiaPath = (Get-Item -Path "$ENV:LOCALAPPDATA\chia-blockchain\app-*\resources\app.asar.unpacked\daemon\chia.exe").FullName
-        $ChiaArguments = "plots create -k $KSize -b $Buffer -u $Buckets -r $Threads -t `"$TempDirectoryPath`" -d `"$FinalDirectoryPath`" $E $X"
+        if ($AlternativePlotterEnabled -eq $true){
+            $TempDirectoryPath = $TempDirectoryPath + '\'
+            $FinalDirectoryPath = $FinalDirectoryPath + '\'
 
-        if (-not[string]::IsNullOrWhiteSpace($PoolPublicKey)){
+            $PlotterPath = $AlternativePlotterPath
+            $ChiaArguments = "-u $Buckets -r $Threads -t $TempDirectoryPath -d $FinalDirectoryPath"
+            if ($Phase3and4Buckets -ne 128){
+                $ChiaArguments += " -v $Phase3and4Buckets"
+            }
+        }
+        else{
+            $PlotterPath = $ChiaPath
+            $ChiaArguments = "plots create -k $KSize -b $Buffer -u $Buckets -r $Threads -t `"$TempDirectoryPath`" -d `"$FinalDirectoryPath`" $E $X"
+        }
+
+        if ($PoolContractEnabled){
+            if (-not[string]::IsNullOrEmpty($PoolContractAddress)){
+                $ChiaArguments += " -c $PoolContractAddress"
+            }
+        }
+        elseif (-not[string]::IsNullOrWhiteSpace($PoolPublicKey)){
             $ChiaArguments += " -p $PoolPublicKey"
         }
+
         if (-not[string]::IsNullOrWhiteSpace($FarmerPublicKey)){
             $ChiaArguments += " -f $FarmerPublicKey"
         }
@@ -43,28 +71,40 @@ function Start-GUIChiaPlotting {
         if ($ChiaJob.BasicPlotting){
             if ($ChiaRun.PlottingParameters.EnableBasicSecondTempDirectory){
                 if (-not[string]::IsNullOrWhiteSpace($SecondTempDirectoryPath)){
-                    $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd('\')
-                    $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+                    $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd(@('\','/'))
+                    if ($AlternativePlotterEnabled -eq $true){
+                        $SecondTempDirectoryPath = $SecondTempDirectoryPath + '\'
+                        $ChiaArguments += " -2 $SecondTempDirectoryPath" 
+                    }
+                    else{
+                        $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+                    }
                 }
             }
         }
         else{
             if (-not[string]::IsNullOrWhiteSpace($SecondTempDirectoryPath)){
-                $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd('\')
-                $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+                $SecondTempDirectoryPath = $SecondTempDirectoryPath.TrimEnd(@('\','/'))
+                if ($AlternativePlotterEnabled -eq $true){
+                    $SecondTempDirectoryPath = $SecondTempDirectoryPath + '\'
+                    $ChiaArguments += " -2 $SecondTempDirectoryPath" 
+                }
+                else{
+                    $ChiaArguments += " -2 `"$SecondTempDirectoryPath`"" 
+                }
             }
         }
         if ($KSize -eq 25){
             $ChiaArguments += " --override-k"
         }
 
-        if ($ChiaPath){
+        if ($PlotterPath){
             Write-Information "Chia path exists, starting the plotting process"
             try{
                 $LogPath = Join-Path $LogDirectoryPath ((Get-Date -Format yyyy_MM_dd_hh-mm-ss-tt_) + "plotlog-" + $ChiaQueue.QueueNumber + "-" + $ChiaRun.RunNumber + ".log")
                 $ChiaRun.LogPath = $LogPath
                 $PlottingParam = @{
-                    FilePath = $ChiaPath
+                    FilePath = $PlotterPath
                     ArgumentList = $ChiaArguments
                     RedirectStandardOutput = $LogPath
                 }
@@ -94,7 +134,12 @@ function Start-GUIChiaPlotting {
             
                 while (!$chiaProcess.HasExited){
                     try{
-                        $progress = Get-ChiaPlotProgress -LogPath $LogPath -ErrorAction Stop
+                        if ($AlternativePlotterEnabled -eq $true){
+                            $progress = Get-ChiaPlotProgress -LogPath $LogPath -MadMax -ErrorAction Stop
+                        }
+                        else{
+                            $progress = Get-ChiaPlotProgress -LogPath $LogPath -ErrorAction Stop
+                        }
                         $plotid = $progress.PlotId
                         $ChiaRun.Progress = $progress.progress
                         $ChiaRun.PlotId = $plotid
@@ -114,10 +159,19 @@ function Start-GUIChiaPlotting {
                             "Phase 4" {$ChiaRun.CurrentPhaseProgress = $progress.Phase4Progess}
                             "Copying" {$ChiaRun.CurrentPhaseProgress = $progress.CopyProgess}
                         }
+                        if (($progress.Phase -eq "Phase 4" -or $progress.Phase -eq "Copying" -or $progress.Phase3Progess -gt 75) -and $ReplotEnabled -and -not$OldPlotDeleted){
+                            $OldPlotDeleted = $true
+                            $oldDirectories = $ChiaRun.PlottingParameters.FinalVolume.OldPlotDirectories.Path
+                            $OldPlot = Get-ChildItem -Path $oldDirectories -Filter "plot-k$($KSize)*.plot" | Select-Object -First 1
+                            if ($Null -ne $OldPlot){
+                                $OldPlot | Remove-Item -Force
+                            }
+                        }
                         $ChiaRun.TempSize = Get-ChiaTempSize -DirectoryPath $TempDirectoryPath -PlotId $plotid
                         Start-Sleep (5 + $ChiaQueue.QueueNumber)
                     }
                     catch{
+                        Write-PSChiaPlotterLog -LogType ERROR -ErrorObject $_
                         Start-Sleep 30
                     }
                 } #while
@@ -140,7 +194,7 @@ function Start-GUIChiaPlotting {
                     $ChiaQueue.FailedPlotCount++
                     $ChiaJob.FailedPlotCount++
                     $DataHash.MainViewModel.FailedRuns.Add($ChiaRun)
-                    sleep -Seconds 1
+                    Start-Sleep -Seconds 1
                     Get-ChildItem -Path $TempDirectoryPath -Filter "*$plotid*.tmp" | foreach {
                         try{
                             Remove-Item -Path $_.FullName -Force -ErrorAction Stop
@@ -167,6 +221,12 @@ function Start-GUIChiaPlotting {
                     $DataHash.MainViewModel.CompletedRuns.Add($ChiaRun)
                     $ChiaRun.CheckPlotPowershellCommand = "&'$ChiaPath' plots check -g $plotid"
                     Update-ChiaGUISummary -Success
+                    if ($ChiaRun.PlottingParameters.AutoPlotCheckEnabled){
+                        $PlotCheckResults = Test-ChiaPlot -Path $plotid -ErrorAction Continue
+                        if ($Null -ne $PlotCheckResults){
+                            $ChiaRun.PlotCheckRatio = [math]::Round($PlotCheckResults.Ratio,2)
+                        }
+                    } #if autoplotcheck
                 }
                 $ChiaQueue.CurrentRun = $null
                 $DataHash.MainViewModel.CurrentRuns.Remove($ChiaRun)
